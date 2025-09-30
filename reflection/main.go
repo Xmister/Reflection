@@ -993,10 +993,24 @@ func TorrentSet(args json.RawMessage) (JsonMap, string) {
 			"priorities": newFilesPriorities,
 		}).Debug("New files priorities")
 
+		// Group files by priority to minimize API calls
+		priorityGroups := make(map[int][]int)
 		for fileId, priority := range newFilesPriorities {
+			priorityGroups[priority] = append(priorityGroups[priority], fileId)
+		}
+
+		// Make one API call per priority group
+		for priority, fileIds := range priorityGroups {
+			// Convert file IDs to strings and join with "|"
+			fileIdStrings := make([]string, len(fileIds))
+			for i, fileId := range fileIds {
+				fileIdStrings[i] = strconv.Itoa(fileId)
+			}
+			idsParam := strings.Join(fileIdStrings, "|")
+
 			params := url.Values{
 				"hash":     {string(torrent.Hash)},
-				"id":       {strconv.Itoa(fileId)},
+				"id":       {idsParam},
 				"priority": {strconv.Itoa(priority)},
 			}
 			qBTConn.PostForm(qBTConn.MakeRequestURL("torrents/filePrio"), params)
