@@ -993,13 +993,40 @@ func TorrentSet(args json.RawMessage) (JsonMap, string) {
 			"priorities": newFilesPriorities,
 		}).Debug("New files priorities")
 
+		// Group files by priority to minimize API calls
+		priorityGroups := make(map[int][]int)
 		for fileId, priority := range newFilesPriorities {
+			priorityGroups[priority] = append(priorityGroups[priority], fileId)
+		}
+
+		// Make one API call per priority group
+		for priority, fileIds := range priorityGroups {
+			// Convert file IDs to strings and join with "|"
+			fileIdStrings := make([]string, len(fileIds))
+			for i, fileId := range fileIds {
+				fileIdStrings[i] = strconv.Itoa(fileId)
+			}
+			idsParam := strings.Join(fileIdStrings, "|")
+
 			params := url.Values{
 				"hash":     {string(torrent.Hash)},
-				"id":       {strconv.Itoa(fileId)},
+				"id":       {idsParam},
 				"priority": {strconv.Itoa(priority)},
 			}
-			qBTConn.PostForm(qBTConn.MakeRequestURL("torrents/filePrio"), params)
+			response := qBTConn.PostForm(qBTConn.MakeRequestURL("torrents/filePrio"), params)
+			log.WithFields(log.Fields{
+				"hash":     string(torrent.Hash),
+				"fileIds":  fileIds,
+				"priority": priority,
+				"response": string(response),
+			}).Debug("Set file priorities")
+		}
+
+		// Small delay to ensure qBittorrent has processed the priority changes
+		// This addresses the issue where changes don't reflect immediately
+		if len(priorityGroups) > 0 {
+			time.Sleep(100 * time.Millisecond)
+			log.WithField("hash", string(torrent.Hash)).Debug("File priority changes should now be reflected")
 		}
 	}
 
