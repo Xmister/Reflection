@@ -1013,12 +1013,20 @@ func TorrentSet(args json.RawMessage) (JsonMap, string) {
 				"id":       {idsParam},
 				"priority": {strconv.Itoa(priority)},
 			}
+			response := qBTConn.PostForm(qBTConn.MakeRequestURL("torrents/filePrio"), params)
 			log.WithFields(log.Fields{
 				"hash":     string(torrent.Hash),
 				"fileIds":  fileIds,
 				"priority": priority,
-			}).Debug("Setting file priorities")
-			qBTConn.PostForm(qBTConn.MakeRequestURL("torrents/filePrio"), params)
+				"response": string(response),
+			}).Debug("Set file priorities")
+		}
+
+		// Small delay to ensure qBittorrent has processed the priority changes
+		// This addresses the issue where changes don't reflect immediately
+		if len(priorityGroups) > 0 {
+			time.Sleep(100 * time.Millisecond)
+			log.WithField("hash", string(torrent.Hash)).Debug("File priority changes should now be reflected")
 		}
 	}
 
