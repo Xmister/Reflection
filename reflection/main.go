@@ -1013,6 +1013,11 @@ func TorrentSet(args json.RawMessage) (JsonMap, string) {
 				"id":       {idsParam},
 				"priority": {strconv.Itoa(priority)},
 			}
+			log.WithFields(log.Fields{
+				"hash":     string(torrent.Hash),
+				"fileIds":  fileIds,
+				"priority": priority,
+			}).Debug("Setting file priorities")
 			qBTConn.PostForm(qBTConn.MakeRequestURL("torrents/filePrio"), params)
 		}
 	}
