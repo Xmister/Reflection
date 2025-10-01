@@ -467,8 +467,8 @@ func MapPropsFiles(dst JsonMap, filesInfo []qBT.PropertiesFiles) {
 			fileStats[i]["wanted"] = true
 			wanted[i] = 1
 		}
-		fileStats[i]["priority"] = 0 // TODO
-		priorities[i] = 0            // TODO
+		fileStats[i]["priority"] = value.Priority
+		priorities[i] = value.Priority
 	}
 
 	dst["files"] = files
@@ -976,11 +976,14 @@ func TorrentSet(args json.RawMessage, qBTConn *qBT.Connection) (JsonMap, string)
 		Ids            *json.RawMessage
 		Files_wanted   *[]int `json:"files-wanted"`
 		Files_unwanted *[]int `json:"files-unwanted"`
+		Priority_high  *[]int `json:"priority-high"`
+		Priority_low   *[]int `json:"priority-low"`
+		Priority_normal *[]int `json:"priority-normal"`
 	}
 	err := json.Unmarshal(args, &req)
 	Check(err)
 
-	if req.Files_wanted != nil || req.Files_unwanted != nil {
+	if req.Files_wanted != nil || req.Files_unwanted != nil || req.Priority_high != nil || req.Priority_low != nil || req.Priority_normal != nil {
 		torrents := parseIDsField(req.Ids, qBTConn)
 		if len(torrents) != 1 {
 			log.Error("Unsupported torrent-set request")
@@ -992,13 +995,31 @@ func TorrentSet(args json.RawMessage, qBTConn *qBT.Connection) (JsonMap, string)
 		if req.Files_wanted != nil {
 			wanted := *req.Files_wanted
 			for _, fileId := range wanted {
-				newFilesPriorities[fileId] = 1 // Normal priority
+				newFilesPriorities[fileId] = 4 // Normal priority
 			}
 		}
 		if req.Files_unwanted != nil {
 			unwanted := *req.Files_unwanted
 			for _, fileId := range unwanted {
 				newFilesPriorities[fileId] = 0 // Do not download
+			}
+		}
+		if req.Priority_high != nil {
+			high := *req.Priority_high
+			for _, fileId := range high {
+				newFilesPriorities[fileId] = 7 // High priority
+			}
+		}
+		if req.Priority_low != nil {
+			low := *req.Priority_low
+			for _, fileId := range low {
+				newFilesPriorities[fileId] = 1 // Low priority
+			}
+		}
+		if req.Priority_normal != nil {
+			normal := *req.Priority_normal
+			for _, fileId := range normal {
+				newFilesPriorities[fileId] = 4 // Normal priority
 			}
 		}
 		log.WithFields(log.Fields{
