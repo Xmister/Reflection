@@ -445,17 +445,16 @@ func decodeTrackerStatus(status int) string {
 }
 
 // mapQBittorrentPriorityToTransmission maps qBittorrent priority values to Transmission priority values
-// Since qBittorrent doesn't support "low priority", we map all non-high priorities to normal (0)
 func mapQBittorrentPriorityToTransmission(qbtPriority int) int {
 	switch qbtPriority {
 	case 0:
 		return 0  // Do not download -> Normal priority (wanted=false will handle the "do not download" part)
 	case 1:
-		return 0  // Normal priority -> Normal priority  
+		return -1 // Low priority -> Low priority  
 	case 6:
-		return 1  // High priority -> High priority
+		return 0  // Medium priority -> Normal priority
 	case 7:
-		return 1  // Maximum priority -> High priority
+		return 1  // High priority -> High priority
 	default:
 		return 0  // Default to normal priority for unknown values
 	}
@@ -1015,7 +1014,7 @@ func TorrentSet(args json.RawMessage, qBTConn *qBT.Connection) (JsonMap, string)
 		if req.Files_wanted != nil {
 			wanted := *req.Files_wanted
 			for _, fileId := range wanted {
-				newFilesPriorities[fileId] = 1 // Normal priority
+				newFilesPriorities[fileId] = 6 // Normal (medium) priority
 			}
 		}
 		if req.Files_unwanted != nil {
@@ -1027,19 +1026,19 @@ func TorrentSet(args json.RawMessage, qBTConn *qBT.Connection) (JsonMap, string)
 		if req.Priority_high != nil {
 			high := *req.Priority_high
 			for _, fileId := range high {
-				newFilesPriorities[fileId] = 6 // High priority
+				newFilesPriorities[fileId] = 7 // High priority
 			}
 		}
 		if req.Priority_low != nil {
 			low := *req.Priority_low
 			for _, fileId := range low {
-				newFilesPriorities[fileId] = 1 // Normal priority (qBittorrent has no low priority)
+				newFilesPriorities[fileId] = 1 // Low priority
 			}
 		}
 		if req.Priority_normal != nil {
 			normal := *req.Priority_normal
 			for _, fileId := range normal {
-				newFilesPriorities[fileId] = 1 // Normal priority
+				newFilesPriorities[fileId] = 6 // Normal (medium) priority
 			}
 		}
 		log.WithFields(log.Fields{
