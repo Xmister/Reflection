@@ -2,11 +2,88 @@ package qBT
 
 import (
 	"encoding/json"
+	"fmt"
+	"strconv"
 )
 
 // https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-Documentation
 
 type JsonMap map[string]interface{}
+
+// ProxyType handles both string and integer proxy type values from qBittorrent API
+type ProxyType int
+
+const (
+	ProxyTypeNone   ProxyType = 0 // None
+	ProxyTypeHTTP   ProxyType = 1 // HTTP
+	ProxyTypeSOCKS5 ProxyType = 2 // SOCKS5
+	ProxyTypeSOCKS4 ProxyType = 3 // SOCKS4
+)
+
+// String returns the string representation of the ProxyType
+func (pt ProxyType) String() string {
+	switch pt {
+	case ProxyTypeNone:
+		return "None"
+	case ProxyTypeHTTP:
+		return "HTTP"
+	case ProxyTypeSOCKS5:
+		return "SOCKS5"
+	case ProxyTypeSOCKS4:
+		return "SOCKS4"
+	default:
+		return fmt.Sprintf("Unknown(%d)", int(pt))
+	}
+}
+
+// UnmarshalJSON implements json.Unmarshaler to handle both string and int values
+func (pt *ProxyType) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as integer first
+	var intValue int
+	if err := json.Unmarshal(data, &intValue); err == nil {
+		*pt = ProxyType(intValue)
+		return nil
+	}
+
+	// Try to unmarshal as string
+	var strValue string
+	if err := json.Unmarshal(data, &strValue); err == nil {
+		// First check if it's a numeric string
+		if intVal, err := strconv.Atoi(strValue); err == nil {
+			*pt = ProxyType(intVal)
+			return nil
+		}
+		
+		// Then check for named proxy types
+		switch strValue {
+		case "None":
+			*pt = ProxyTypeNone
+		case "HTTP":
+			*pt = ProxyTypeHTTP
+		case "SOCKS5":
+			*pt = ProxyTypeSOCKS5
+		case "SOCKS4":
+			*pt = ProxyTypeSOCKS4
+		default:
+			return fmt.Errorf("unknown proxy type string: %s", strValue)
+		}
+		return nil
+	}
+
+	// Handle other types like float64
+	var rawValue interface{}
+	if err := json.Unmarshal(data, &rawValue); err != nil {
+		return err
+	}
+
+	switch v := rawValue.(type) {
+	case float64:
+		*pt = ProxyType(int(v))
+		return nil
+	default:
+		return fmt.Errorf("cannot unmarshal %T into ProxyType", v)
+	}
+}
 
 type TorrentInfo struct {
 	Id             ID      //   Transmission's ID
@@ -176,7 +253,7 @@ type Preferences struct {
 	Lsd                            bool        //	True if LSD is eanbled
 	Encryption                     int         //	See list of possible values here below
 	Anonymous_mode                 bool        //	If true anonymous mode will be enabled; read more here; this option is only available in qBittorent built against libtorrent version 0.16.X and higher
-	Proxy_type                     int         //	See list of possible values here below
+	Proxy_type                     ProxyType   //	See list of possible values here below
 	Proxy_ip                       string      //	Proxy Address address or domain name
 	Proxy_port                     int         //	Proxy port
 	Proxy_peer_connections         bool        //	True if peer and web seed connections should be proxified; this option will have any effect only in qBittorent built against libtorrent version 0.16.X and higher
