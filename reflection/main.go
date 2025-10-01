@@ -444,6 +444,22 @@ func decodeTrackerStatus(status int) string {
 	}
 }
 
+// mapQBittorrentPriorityToTransmission maps qBittorrent priority values to Transmission priority values
+func mapQBittorrentPriorityToTransmission(qbtPriority int) int {
+	switch qbtPriority {
+	case 0:
+		return 0  // Do not download -> Normal priority (wanted=false will handle the "do not download" part)
+	case 1:
+		return -1 // Low priority -> Low priority  
+	case 6:
+		return 0  // Medium priority -> Normal priority
+	case 7:
+		return 1  // High priority -> High priority
+	default:
+		return 0  // Default to normal priority for unknown values
+	}
+}
+
 func MapPropsFiles(dst JsonMap, filesInfo []qBT.PropertiesFiles) {
 	fileNum := len(filesInfo)
 	files := make([]JsonMap, fileNum)
@@ -467,8 +483,11 @@ func MapPropsFiles(dst JsonMap, filesInfo []qBT.PropertiesFiles) {
 			fileStats[i]["wanted"] = true
 			wanted[i] = 1
 		}
-		fileStats[i]["priority"] = value.Priority
-		priorities[i] = value.Priority
+		
+		// Map qBittorrent priority to Transmission priority
+		transmissionPriority := mapQBittorrentPriorityToTransmission(value.Priority)
+		fileStats[i]["priority"] = transmissionPriority
+		priorities[i] = transmissionPriority
 	}
 
 	dst["files"] = files
@@ -995,7 +1014,7 @@ func TorrentSet(args json.RawMessage, qBTConn *qBT.Connection) (JsonMap, string)
 		if req.Files_wanted != nil {
 			wanted := *req.Files_wanted
 			for _, fileId := range wanted {
-				newFilesPriorities[fileId] = 4 // Normal priority
+				newFilesPriorities[fileId] = 6 // Normal (medium) priority
 			}
 		}
 		if req.Files_unwanted != nil {
@@ -1019,7 +1038,7 @@ func TorrentSet(args json.RawMessage, qBTConn *qBT.Connection) (JsonMap, string)
 		if req.Priority_normal != nil {
 			normal := *req.Priority_normal
 			for _, fileId := range normal {
-				newFilesPriorities[fileId] = 4 // Normal priority
+				newFilesPriorities[fileId] = 6 // Normal (medium) priority
 			}
 		}
 		log.WithFields(log.Fields{
