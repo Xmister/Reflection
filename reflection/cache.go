@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/h31/Reflection/qBT"
+	"reflection-test/qBT"
 	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
