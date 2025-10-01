@@ -1,0 +1,22 @@
+{
+  "save_path": "/home/artyom/Downloads/",
+  "dl_limit": -1,
+  "up_limit": -1,
+  "max_connec": 200,
+  "max_connec_per_torrent": 100,
+  "listen_port": 6881,
+  "upnp": true,
+  "random_port": false,
+  "enable_utp": true,
+  "dht": true,
+  "pex": true,
+  "lsd": true,
+  "temp_path": "/tmp/",
+  "temp_path_enabled": false,
+  "max_active_downloads": 3,
+  "max_active_uploads": 3,
+  "queueing_enabled": true,
+  "max_ratio": -1,
+  "max_ratio_enabled": false,
+  "encryption": 0
+}
