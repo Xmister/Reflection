@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/h31/Reflection/qBT"
+	"reflection-test/qBT"
 	"github.com/hekmon/transmissionrpc"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/h2non/gock.v1"

@@ -4,7 +4,6 @@ go 1.24.7
 
 require (
 	github.com/Workiva/go-datastructures v1.1.6
-	github.com/h31/Reflection v0.0.0-20200421070205-646eaecf8103
 	github.com/hekmon/transmissionrpc v1.1.0
 	github.com/iancoleman/orderedmap v0.3.0
 	github.com/jackpal/bencode-go v1.0.2
