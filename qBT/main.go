@@ -35,6 +35,7 @@ func checkAndLog(e error, payload []byte) {
 type Auth struct {
 	LoggedIn bool
 	Cookie   http.Cookie
+	mutex    sync.RWMutex
 }
 
 type Hash string
@@ -180,6 +181,8 @@ func (q *Connection) Init(baseUrl string, client *http.Client, useSync bool) {
 }
 
 func (q *Connection) IsLoggedIn() bool {
+	q.auth.mutex.RLock()
+	defer q.auth.mutex.RUnlock()
 	return q.auth.LoggedIn
 }
 
@@ -353,7 +356,12 @@ func (q *Connection) GetPropsFiles(hash Hash) (files []PropertiesFiles) {
 func (q *Connection) DoGET(url string) []byte {
 	req, err := http.NewRequest("GET", url, nil)
 	check(err)
-	req.AddCookie(&q.auth.Cookie)
+	
+	q.auth.mutex.RLock()
+	if q.auth.LoggedIn {
+		req.AddCookie(&q.auth.Cookie)
+	}
+	q.auth.mutex.RUnlock()
 
 	resp, err := q.client.Do(req)
 	check(err)
@@ -366,7 +374,12 @@ func (q *Connection) DoPOST(url string, contentType string, body io.Reader) []by
 	req, err := http.NewRequest("POST", url, body)
 	check(err)
 	req.Header.Set("Content-Type", contentType)
-	req.AddCookie(&q.auth.Cookie)
+	
+	q.auth.mutex.RLock()
+	if q.auth.LoggedIn {
+		req.AddCookie(&q.auth.Cookie)
+	}
+	q.auth.mutex.RUnlock()
 
 	resp, err := q.client.Do(req)
 	check(err)
@@ -380,6 +393,14 @@ func (q *Connection) PostForm(url string, data url.Values) []byte {
 }
 
 func (q *Connection) Login(username, password string) bool {
+	q.auth.mutex.Lock()
+	defer q.auth.mutex.Unlock()
+	
+	// Double-check if we're already logged in (another thread might have logged in)
+	if q.auth.LoggedIn {
+		return true
+	}
+	
 	resp, err := http.PostForm(q.MakeRequestURL("auth/login"),
 		url.Values{"username": {username}, "password": {password}})
 	check(err)
