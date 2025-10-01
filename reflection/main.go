@@ -467,8 +467,8 @@ func MapPropsFiles(dst JsonMap, filesInfo []qBT.PropertiesFiles) {
 			fileStats[i]["wanted"] = true
 			wanted[i] = 1
 		}
-		fileStats[i]["priority"] = 0 // TODO
-		priorities[i] = 0            // TODO
+		fileStats[i]["priority"] = value.Priority
+		priorities[i] = value.Priority
 	}
 
 	dst["files"] = files
