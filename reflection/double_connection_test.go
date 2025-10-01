@@ -47,7 +47,10 @@ func TestDoubleConnection(t *testing.T) {
 	client := &http.Client{Transport: &http.Transport{}}
 	gock.InterceptClient(client)
 
-	qBTConn.Init(apiAddr, client, false)
+	// Initialize connection factory parameters
+	qbtAPIAddr = apiAddr
+	qbtHTTPClient = client
+	qbtUseSync = false
 	server := httptest.NewServer(http.HandlerFunc(handler))
 	defer server.Close()
 	defer server.CloseClientConnections()

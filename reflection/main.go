@@ -67,7 +67,19 @@ type additionalArguments struct {
 	skipChecking         argumentValue
 }
 
-var qBTConn qBT.Connection
+// Connection factory parameters - shared across all connections
+var (
+	qbtAPIAddr     string
+	qbtHTTPClient  *http.Client
+	qbtUseSync     bool
+)
+
+// createQBTConnection creates a new qBT connection for this request/session
+func createQBTConnection() *qBT.Connection {
+	conn := &qBT.Connection{}
+	conn.Init(qbtAPIAddr, qbtHTTPClient, qbtUseSync)
+	return conn
+}
 
 func IsFieldDeprecated(field string) bool {
 	_, ok := deprecatedFields[field]
@@ -85,7 +97,7 @@ func IsFieldDeprecated(field string) bool {
 //	return filtered
 //}
 
-func parseIDsField(args *json.RawMessage) qBT.TorrentInfoList {
+func parseIDsField(args *json.RawMessage, qBTConn *qBT.Connection) qBT.TorrentInfoList {
 	qBTConn.UpdateTorrentsList()
 
 	if args == nil {
@@ -122,7 +134,7 @@ func parseIDsField(args *json.RawMessage) qBT.TorrentInfoList {
 			panic("Unsupported ID type: " + ids)
 		}
 		log.Debug("Query recently-active")
-		if *useSync {
+		if qbtUseSync {
 			return qBTConn.TorrentsList.GetActive()
 		} else {
 			return qBTConn.TorrentsList.Slice()
@@ -133,14 +145,14 @@ func parseIDsField(args *json.RawMessage) qBT.TorrentInfoList {
 	}
 }
 
-func parseActionArgument(args json.RawMessage) qBT.TorrentInfoList {
+func parseActionArgument(args json.RawMessage, qBTConn *qBT.Connection) qBT.TorrentInfoList {
 	var req struct {
 		Ids json.RawMessage
 	}
 	err := json.Unmarshal(args, &req)
 	Check(err)
 
-	return parseIDsField(&req.Ids)
+	return parseIDsField(&req.Ids, qBTConn)
 }
 
 func MapTorrentList(dst JsonMap, src *qBT.TorrentInfo) {
@@ -341,7 +353,7 @@ func MapPropsGeneral(dst JsonMap, propGeneral qBT.PropertiesGeneral) {
 	dst["peer-limit"] = propGeneral.Nb_connections_limit // TODO: What's it?
 }
 
-func MapPropsPeers(dst JsonMap, hash qBT.Hash) {
+func MapPropsPeers(dst JsonMap, hash qBT.Hash, qBTConn *qBT.Connection) {
 	url := qBTConn.MakeRequestURLWithParam("sync/torrentPeers", map[string]string{"hash": string(hash), "rid": "0"})
 	torrents := qBTConn.DoGET(url)
 
@@ -468,12 +480,12 @@ func MapPropsFiles(dst JsonMap, filesInfo []qBT.PropertiesFiles) {
 var propsCache = Cache{Timeout: time.Duration(*cacheTimeout) * time.Second}
 var trackersCache = Cache{Timeout: time.Duration(*cacheTimeout) * time.Second}
 
-func TorrentGet(args json.RawMessage) (JsonMap, string) {
+func TorrentGet(args json.RawMessage, qBTConn *qBT.Connection) (JsonMap, string) {
 	var req transmission.GetRequest
 	err := json.Unmarshal(args, &req)
 	Check(err)
 
-	torrents := parseIDsField(req.Ids)
+	torrents := parseIDsField(req.Ids, qBTConn)
 	severalIDsRequired := len(torrents) > 1
 	fields := req.Fields
 	filesNeeded := false
@@ -547,7 +559,7 @@ func TorrentGet(args json.RawMessage) (JsonMap, string) {
 		}
 		if peersNeeded {
 			log.WithField("id", id).WithField("hash", hash).Debug("Peers required")
-			MapPropsPeers(translated, hash)
+			MapPropsPeers(translated, hash, qBTConn)
 		}
 
 		translated["id"] = id
@@ -570,11 +582,11 @@ func TorrentGet(args json.RawMessage) (JsonMap, string) {
 		resultList[i] = translated
 	}
 	response := JsonMap{"torrents": resultList}
-	addRemovedList(req.Ids, response)
+	addRemovedList(req.Ids, response, qBTConn)
 	return response, "success"
 }
 
-func addRemovedList(idsField *json.RawMessage, resp JsonMap) {
+func addRemovedList(idsField *json.RawMessage, resp JsonMap, qBTConn *qBT.Connection) {
 	if idsField == nil {
 		return
 	}
@@ -599,7 +611,7 @@ func qBTEncryptionToTR(enc int) (res string) {
 	}
 }
 
-func SessionGet() (JsonMap, string) {
+func SessionGet(qBTConn *qBT.Connection) (JsonMap, string) {
 	session := make(JsonMap)
 	for key, value := range transmission.SessionGetBase {
 		session[key] = value
@@ -646,7 +658,7 @@ func SessionGet() (JsonMap, string) {
 	return session, "success"
 }
 
-func FreeSpace(args json.RawMessage) (JsonMap, string) {
+func FreeSpace(args json.RawMessage, qBTConn *qBT.Connection) (JsonMap, string) {
 	req := struct {
 		Path string
 	}{}
@@ -664,7 +676,7 @@ func FreeSpace(args json.RawMessage) (JsonMap, string) {
 	}, "success"
 }
 
-func SessionStats() (JsonMap, string) {
+func SessionStats(qBTConn *qBT.Connection) (JsonMap, string) {
 	session := make(JsonMap)
 	for key, value := range transmission.SessionStatsTemplate {
 		session[key] = value
@@ -698,30 +710,30 @@ func SessionStats() (JsonMap, string) {
 	return session, "success"
 }
 
-func TorrentPause(args json.RawMessage) (JsonMap, string) {
-	torrents := parseActionArgument(args)
+func TorrentPause(args json.RawMessage, qBTConn *qBT.Connection) (JsonMap, string) {
+	torrents := parseActionArgument(args, qBTConn)
 	log.WithField("hashes", torrents.Hashes()).Debug("Stopping torrents")
 	qBTConn.PostWithHashes("torrents/pause", torrents)
 	return JsonMap{}, "success"
 }
 
-func TorrentResume(args json.RawMessage) (JsonMap, string) {
-	torrents := parseActionArgument(args)
+func TorrentResume(args json.RawMessage, qBTConn *qBT.Connection) (JsonMap, string) {
+	torrents := parseActionArgument(args, qBTConn)
 	log.WithField("hashes", torrents.Hashes()).Debug("Starting torrents")
 
 	qBTConn.PostWithHashes("torrents/resume", torrents)
 	return JsonMap{}, "success"
 }
 
-func TorrentRecheck(args json.RawMessage) (JsonMap, string) {
-	torrents := parseActionArgument(args)
+func TorrentRecheck(args json.RawMessage, qBTConn *qBT.Connection) (JsonMap, string) {
+	torrents := parseActionArgument(args, qBTConn)
 	log.WithField("hashes", torrents.Hashes()).Debug("Verifying torrents")
 
 	qBTConn.PostWithHashes("torrents/recheck", torrents)
 	return JsonMap{}, "success"
 }
 
-func TorrentDelete(args json.RawMessage) (JsonMap, string) {
+func TorrentDelete(args json.RawMessage, qBTConn *qBT.Connection) (JsonMap, string) {
 	var req struct {
 		Ids             json.RawMessage
 		DeleteLocalData interface{} `json:"delete-local-data"`
@@ -729,7 +741,7 @@ func TorrentDelete(args json.RawMessage) (JsonMap, string) {
 	err := json.Unmarshal(args, &req)
 	Check(err)
 
-	torrents := parseIDsField(&req.Ids)
+	torrents := parseIDsField(&req.Ids, qBTConn)
 	log.WithField("hashes", torrents.Hashes()).Warn("Going to remove torrents")
 
 	joinedHashes := torrents.ConcatenateHashes()
@@ -782,7 +794,7 @@ func AdditionalArgumentToString(value argumentValue) string {
 	}
 }
 
-func UploadTorrent(metainfo *[]byte, urls *string, req *transmission.TorrentAddRequest, paused bool) {
+func UploadTorrent(metainfo *[]byte, urls *string, req *transmission.TorrentAddRequest, paused bool, qBTConn *qBT.Connection) {
 	var buffer bytes.Buffer
 	mime := multipart.NewWriter(&buffer)
 
@@ -870,7 +882,7 @@ func ParseMetainfo(metainfo []byte) (newHash qBT.Hash, newName string) {
 	return
 }
 
-func TorrentAdd(args json.RawMessage) (JsonMap, string) {
+func TorrentAdd(args json.RawMessage, qBTConn *qBT.Connection) (JsonMap, string) {
 	var req transmission.TorrentAddRequest
 	err := json.Unmarshal(args, &req)
 	Check(err)
@@ -897,18 +909,18 @@ func TorrentAdd(args json.RawMessage) (JsonMap, string) {
 		metainfo, err := base64.StdEncoding.DecodeString(*req.Metainfo)
 		Check(err)
 		newHash, newName = ParseMetainfo(metainfo)
-		UploadTorrent(&metainfo, nil, &req, paused)
+		UploadTorrent(&metainfo, nil, &req, paused, qBTConn)
 	} else if req.Filename != nil {
 		path := *req.Filename
 		if strings.HasPrefix(path, "magnet:?") {
 			newHash, newName = ParseMagnetLink(path)
 
-			UploadTorrent(nil, &path, &req, paused)
+			UploadTorrent(nil, &path, &req, paused, qBTConn)
 		} else if strings.HasPrefix(path, "http") {
 			metainfo := DoGetWithCookies(path, req.Cookies)
 
 			newHash, newName = ParseMetainfo(metainfo)
-			UploadTorrent(&metainfo, nil, &req, paused)
+			UploadTorrent(&metainfo, nil, &req, paused, qBTConn)
 		}
 	}
 
@@ -959,7 +971,7 @@ func TorrentAdd(args json.RawMessage) (JsonMap, string) {
 	}, "success"
 }
 
-func TorrentSet(args json.RawMessage) (JsonMap, string) {
+func TorrentSet(args json.RawMessage, qBTConn *qBT.Connection) (JsonMap, string) {
 	var req struct {
 		Ids            *json.RawMessage
 		Files_wanted   *[]int `json:"files-wanted"`
@@ -969,7 +981,7 @@ func TorrentSet(args json.RawMessage) (JsonMap, string) {
 	Check(err)
 
 	if req.Files_wanted != nil || req.Files_unwanted != nil {
-		torrents := parseIDsField(req.Ids)
+		torrents := parseIDsField(req.Ids, qBTConn)
 		if len(torrents) != 1 {
 			log.Error("Unsupported torrent-set request")
 			return JsonMap{}, "Unsupported torrent-set request"
@@ -1067,7 +1079,7 @@ func parseAdditionalLocationArguments(originalLocation string) (args additionalA
 	return
 }
 
-func TorrentSetLocation(args json.RawMessage) (JsonMap, string) {
+func TorrentSetLocation(args json.RawMessage, qBTConn *qBT.Connection) (JsonMap, string) {
 	var req struct {
 		Ids      *json.RawMessage
 		Location *string     `json:"location"`
@@ -1081,7 +1093,7 @@ func TorrentSetLocation(args json.RawMessage) (JsonMap, string) {
 		return JsonMap{}, "Absent location field"
 	}
 
-	torrents := parseIDsField(req.Ids)
+	torrents := parseIDsField(req.Ids, qBTConn)
 
 	/*var move bool // TODO: Move to a function
 	switch val := req.Move.(type) {
@@ -1116,6 +1128,9 @@ func TorrentSetLocation(args json.RawMessage) (JsonMap, string) {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
+	// Create a new qBT connection for this transmission session/request
+	qBTConn := createQBTConnection()
+	
 	var req transmission.RPCRequest
 	reqBody, err := ioutil.ReadAll(r.Body)
 	log.Debug("Got request ", string(reqBody))
@@ -1140,29 +1155,29 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	var result string
 	switch req.Method {
 	case "session-get":
-		resp, result = SessionGet()
+		resp, result = SessionGet(qBTConn)
 	case "free-space":
-		resp, result = FreeSpace(req.Arguments)
+		resp, result = FreeSpace(req.Arguments, qBTConn)
 	case "torrent-get":
-		resp, result = TorrentGet(req.Arguments)
+		resp, result = TorrentGet(req.Arguments, qBTConn)
 	case "session-stats":
-		resp, result = SessionStats()
+		resp, result = SessionStats(qBTConn)
 	case "torrent-stop":
-		resp, result = TorrentPause(req.Arguments)
+		resp, result = TorrentPause(req.Arguments, qBTConn)
 	case "torrent-start":
-		resp, result = TorrentResume(req.Arguments)
+		resp, result = TorrentResume(req.Arguments, qBTConn)
 	case "torrent-start-now":
-		resp, result = TorrentResume(req.Arguments)
+		resp, result = TorrentResume(req.Arguments, qBTConn)
 	case "torrent-verify":
-		resp, result = TorrentRecheck(req.Arguments)
+		resp, result = TorrentRecheck(req.Arguments, qBTConn)
 	case "torrent-remove":
-		resp, result = TorrentDelete(req.Arguments)
+		resp, result = TorrentDelete(req.Arguments, qBTConn)
 	case "torrent-add":
-		resp, result = TorrentAdd(req.Arguments)
+		resp, result = TorrentAdd(req.Arguments, qBTConn)
 	case "torrent-set":
-		resp, result = TorrentSet(req.Arguments)
+		resp, result = TorrentSet(req.Arguments, qBTConn)
 	case "torrent-set-location":
-		resp, result = TorrentSetLocation(req.Arguments)
+		resp, result = TorrentSetLocation(req.Arguments, qBTConn)
 	default:
 		log.Error("Unknown method: ", req.Method)
 	}
@@ -1201,7 +1216,11 @@ func main() {
 	} else {
 		cl = &http.Client{}
 	}
-	qBTConn.Init(*apiAddr, cl, *useSync)
+	
+	// Initialize connection factory parameters
+	qbtAPIAddr = *apiAddr
+	qbtHTTPClient = cl
+	qbtUseSync = *useSync
 
 	http.HandleFunc("/transmission/rpc", handler)
 	http.HandleFunc("/rpc", handler)
